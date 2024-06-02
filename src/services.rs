@@ -18,7 +18,7 @@ use actix_web::{
 use serde_json::json;
 use sqlx;
 use uuid::Uuid;
-use crate::{schema::{CreateTaskSchema, FilterOptions}, model::TaskModel, AppState};
+use crate::{schema::{CreateTaskSchema, FilterOptions, UpdateTaskSchema}, model::TaskModel, AppState};
 
 #[get("/healthchecker")]
 async fn healthchecker() -> impl Responder {
@@ -136,12 +136,52 @@ async fn get_task(
         }
 }
 
+#[patch("/task/{id}")]
+async fn update_task(
+    path: Path<Uuid>,
+    body: Json<UpdateTaskSchema>,
+    data: Data<AppState>) -> impl Responder {
+
+    let task_id = path.into_inner();
+
+    match
+        sqlx::query_as!(
+            TaskModel,
+            "UPDATE tasks SET title = $1, content = $2 WHERE id = $3 RETURNING *",
+            body.title,
+            body.content,
+            task_id
+        )
+        .fetch_one(&data.db)
+        .await {
+            Ok(task) => {
+                let note_response = json!({
+                    "status": "ok",
+                    "task": task
+                });
+
+                return HttpResponse::Ok().json(note_response);
+            }
+            Err(e) => {
+                println!("{:?}", e);
+                let error_response = json!({
+                    "status": "error",
+                    "message": format!("{:?}", e)
+                });
+
+                return HttpResponse::InternalServerError().json(error_response);
+            }
+        }
+}
+
+
 pub fn config(conf: &mut ServiceConfig) {
     let scope = scope("/api")
         .service(healthchecker)
         .service(create_task)
         .service(get_tasks)
-        .service(get_task);
+        .service(get_task)
+        .service(update_task);
 
     conf.service(scope);
 }
