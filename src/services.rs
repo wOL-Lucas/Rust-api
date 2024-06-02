@@ -174,6 +174,37 @@ async fn update_task(
         }
 }
 
+#[delete("/task/{id}")]
+async fn delete_task(
+    path: Path<Uuid>,
+    data: Data<AppState>) -> impl Responder {
+    
+    let task_id = path.into_inner();
+    match 
+         sqlx::query_as!(
+            TaskModel,
+            "DELETE FROM tasks WHERE id = $1 RETURNING *",
+            task_id
+        ).fetch_all(&data.db).await {
+            Ok(task) => {
+                let note_response = json!({
+                    "status": "ok",
+                    "task": task
+                });
+
+                return HttpResponse::Ok().json(note_response);
+            }
+            Err(e) => {
+                println!("{:?}", e);
+                let error_response = json!({
+                    "status": "error",
+                    "message": format!("{:?}", e)
+                });
+
+                return HttpResponse::InternalServerError().json(error_response);
+            }
+        }
+}
 
 pub fn config(conf: &mut ServiceConfig) {
     let scope = scope("/api")
@@ -181,7 +212,8 @@ pub fn config(conf: &mut ServiceConfig) {
         .service(create_task)
         .service(get_tasks)
         .service(get_task)
-        .service(update_task);
+        .service(update_task)
+        .service(delete_task);
 
     conf.service(scope);
 }
