@@ -2,18 +2,22 @@ use actix_web::{
     web::{
         scope,
         Json,
+        Path,
         Data,
         ServiceConfig,
         Query
     },
     get,
     post,
+    patch,
+    delete,
     HttpResponse,
     Responder
 };
 
 use serde_json::json;
 use sqlx;
+use uuid::Uuid;
 use crate::{schema::{CreateTaskSchema, FilterOptions}, model::TaskModel, AppState};
 
 #[get("/healthchecker")]
@@ -97,11 +101,47 @@ async fn get_tasks(
         }
 }
 
+#[get("/task/{id}")]
+async fn get_task(
+    path: Path<Uuid>,
+    data: Data<AppState>) -> impl Responder {
+
+    let task_id = path.into_inner();
+
+    match 
+        sqlx::query_as!(
+            TaskModel,
+            "SELECT * FROM tasks WHERE id = $1",
+            task_id
+        )
+        .fetch_one(&data.db)
+        .await {
+            Ok(task) => {
+                let note_response = json!({
+                    "status": "ok",
+                    "task": task
+                });
+
+                return HttpResponse::Ok().json(note_response);
+            }
+            Err(e) => {
+                println!("{:?}", e);
+                let error_response = json!({
+                    "status": "error",
+                    "message": format!("{:?}", e)
+                });
+
+                return HttpResponse::InternalServerError().json(error_response);
+            }
+        }
+}
+
 pub fn config(conf: &mut ServiceConfig) {
     let scope = scope("/api")
         .service(healthchecker)
         .service(create_task)
-        .service(get_tasks);
+        .service(get_tasks)
+        .service(get_task);
 
     conf.service(scope);
 }
